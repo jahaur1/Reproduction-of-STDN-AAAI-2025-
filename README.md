@@ -1,98 +1,134 @@
-# STDN 四数据集复现入口
+# STDN复现与三模型交通流鲁棒性分析
 
-论文：[Spatiotemporal-aware Trend-Seasonality Decomposition Network for Traffic Flow Forecasting](https://arxiv.org/abs/2502.12213)（AAAI 2025）。
+论文：[STDN — Spatiotemporal-aware Trend-Seasonality Decomposition Network for Traffic Flow Forecasting](https://arxiv.org/abs/2502.12213)，AAAI2025。原作者代码：[roarer008/STDN](https://github.com/roarer008/STDN)。
 
-作者官方代码：[roarer008/STDN](https://github.com/roarer008/STDN)。本项目基于提交 `e24a60fa9485fb9805df9c171d67ab60840d757d`，补充可移植的数据准备、运行入口和测试结果导出。**本项目不是作者官方仓库。**
+本仓库保留之前的STDN四数据集复现，并加入STWave、HyperD与STDN的统一鲁棒性比较。支持PEMS03/04/07/08。**这是复现工程，不是作者官方仓库。**
 
-## 一条命令运行
-
-需要 Python 3.10 或更高版本，建议先创建独立 Python 环境。下载本项目、准备外部数据后，在项目目录执行：
-
-```sh
-python run.py --dataset all --data-root /path/to/all_data --raw-root /path/to/raw_data --install-deps
-```
-
-该命令依次准备并训练 PEMS03、04、07、08，各运行一次。依赖缺失时安装到当前 Python 环境；已安装的依赖不会自动升级。默认自动使用可用 CUDA，否则使用 CPU。GPU 用户应预先安装适合自己设备的 [PyTorch](https://pytorch.org/get-started/locally/)，自动安装不保证 CUDA 可用。
-
-仅运行单个数据集：
-
-```sh
-python run.py --dataset PEMS04 --data-root /path/to/all_data --raw-root /path/to/raw_data
-```
-
-先检查数据与环境是否能运行（每个划分最多 4 个样本、1 轮、batch 2，不用于论文指标比较）：
-
-```sh
-python run.py --dataset all --data-root /path/to/all_data --raw-root /path/to/raw_data --smoke --device cpu
-```
-
-路径含空格时加双引号。Windows 路径可直接使用，例如 `--data-root "D:/datasets/all_data"`。完整训练耗时较长，应在独立终端或自己的任务调度器中运行；本入口本身不提供后台驻留或中断续训功能。
-
-## 外部数据
-
-本项目不包含数据集、论文 PDF、训练权重和运行日志。请自行获取有权使用的数据。
-
-推荐使用 BasicTS 格式，文件结构为：
+## 文件夹
 
 ```text
-all_data/
-  PEMS03/data.dat
-  PEMS03/desc.json
-  PEMS04/data.dat
-  PEMS04/desc.json
-  PEMS07/data.dat
-  PEMS07/desc.json
-  PEMS08/data.dat
-  PEMS08/desc.json
-raw_data/
-  PEMS03/PEMS03.csv
-  PEMS03/PEMS03.txt
-  PEMS04/PEMS04.csv
-  PEMS07/PEMS07.csv
-  PEMS08/PEMS08.csv
+run.py                     统一Python入口
+launcher.py                参数解析、依赖检查和任务分发
+models/
+  STDN/                    原有STDN复现代码、四份配置
+  STWave/                  STWave模型、训练器与四份配置
+  HyperD/                  HyperD模型、四份配置及随附BasicTS框架
+robustness/                共享扰动、三模型适配、指标汇总与绘图
+docs/                      原复现说明、扰动协议、参数与源码来源
+vendor/fastdtw/            原Python实现及其MIT许可
+data/                      自行准备的外部数据，不上传
+outputs/                   运行结果、预测与分析图，不上传
 ```
 
-`data.dat` 必须是 float32，形状由 `desc.json` 的 `shape` 指定，特征顺序为 `traffic flow, time of day, day of week`；后两者分别按 288 和 7 归一化。节点数依次为 358、307、883、170。CSV 为带表头的三列 `from,to,distance`，保持原有边方向。PEMS03 的原始传感器编号使用 `PEMS03.txt` 转为连续节点编号。
+数据集、模型权重、日志、历史运行结果均不包含在仓库中。三个模型所需源码已包含，无需另外下载模型仓库。
 
-也支持原始 `PEMSxx.npz`（数组名 `data`，第一通道是流量）。此时必须用 `--start-date` 指定该数据集第一个采样点的真实日期时间，以生成正确的星期和日内时段；不同数据集请分别运行。不要猜测日期。
+## 数据与环境准备
+
+建议Python3.12，并在独立环境中安装适合自己GPU的[PyTorch](https://pytorch.org/get-started/locally/)。然后执行`python -m pip install -r requirements.txt`。也可在实验命令后加`--install-deps`，缺少依赖时会安装到当前Python环境；不会自动替换已安装PyTorch。
+
+数据按下面结构放置：
+
+```text
+data/
+  flow/
+    PEMS03/{data.dat,desc.json,adj_mx.pkl}
+    PEMS04/{data.dat,desc.json,adj_mx.pkl}
+    PEMS07/{data.dat,desc.json,adj_mx.pkl}
+    PEMS08/{data.dat,desc.json,adj_mx.pkl}
+  graphs/
+    PEMS03/{PEMS03.csv,PEMS03.txt}
+    PEMS04/PEMS04.csv
+    PEMS07/PEMS07.csv
+    PEMS08/PEMS08.csv
+```
+
+花括号表示同目录下的多个文件，不是文件名。`data.dat`为BasicTS的float32数据，通道顺序为流量、日内时段、星期；`desc.json`提供形状和regular_settings；`adj_mx.pkl`是HyperD使用的道路图。原始CSV带表头且有from/to/distance三列；03使用PEMS03.txt映射传感器编号。可参考[BasicTS数据说明](https://github.com/GestaltCogTeam/BasicTS/blob/v0.5.8/tutorial/dataset_design.md)。
+
+数据也可以留在其他位置，每条命令追加：
 
 ```sh
-python run.py --dataset PEMS04 --data-root /path/to/raw_data --start-date YYYY-MM-DD
+--data-root /path/to/all_data --raw-root /path/to/raw_data
 ```
 
-还支持已经准备好的 `samples_12_12_5.npz`，须搭配节点编号已连续化的 `PEMSxx.csv`。样本键为 `train_x,train_target,trainTE,val_x,val_target,valTE,test_x,test_target,testTE`。
+## 分别一键运行
 
-从连续序列准备样本时，按时间顺序划分 60%/20%/剩余部分，在每个划分内生成 12 步输入、12 步输出，不跨划分取窗口。缓存放在 `.cache/`，训练结果放在 `results/`，两者均被 Git 忽略。
+在仓库根目录运行。下面每个命令都自动准备对应扰动、依次训练三个模型、保留测试样本和预测，再汇总CSV及分析图：
 
-## 配置与来源
+```sh
+# 固定节点缺失，10%/20%/30%
+python run.py node-missing
 
-| 数据集 | 配置来源 | 节点数 | K / d | 图阶数 | 最大轮数 | batch |
-| --- | --- | ---: | --- | ---: | ---: | ---: |
-| PEMS03 | 参考第三方 Torch-MTS 配置 | 358 | 16 / 8 | 3 | 200 | 64 |
-| PEMS04 | 作者发布配置 | 307 | 16 / 8 | 3 | 200 | 64 |
-| PEMS07 | 作者发布配置 | 883 | 12 / 8 | 4 | 100 | 64 |
-| PEMS08 | 参考第三方 Torch-MTS 配置 | 170 | 16 / 8 | 3 | 200 | 64 |
+# 每个节点独立的连续3步缺失，10%/20%/30%
+python run.py temporal-gap
 
-学习率均为 0.001，其余参数见 `conf/`。03、08 参考 [Torch-MTS 的 STDN 配置](https://github.com/XDZhelheim/Torch-MTS/blob/2db4de371584067160f9a37f1ae59495699b4a0a/configs/STDN.yaml)：早停耐心值20，MultiStepLR 在完成第30、50轮时各乘0.1；默认种子233，参考其训练入口和公开日志。04、07保持作者配置：早停10，StepLR 每10轮乘0.9，默认不显式固定随机种子。`--seed` 可以覆盖当前数据集的种子，实际值会记录在结果中。`--batch-size` 可以覆盖配置，但会改变实验条件。
+# 高斯噪声，10%/20%/30%，均值10、标准差500、截断至非负
+python run.py gaussian-noise
+```
 
-03、08 是第三方参数参考配置，不能称为作者官方配置或已证明的最佳参数。本项目仍采用上文的作者式数据划分和样本构造、原作者训练损失与指标实现；没有改用 Torch-MTS 的完整数据和训练流程，因此不能直接对齐其公开日志中的测试指标。来源与已知差异见 [REFERENCE_TORCH_MTS.md](REFERENCE_TORCH_MTS.md)。
+每种命令默认覆盖四个数据集、三种比例、三个模型，共36个独立组合，每组合只训练一次。下面是只跑一个数据集和一个比例的例子：
 
-模型计算逻辑沿用上游；修改了设备分配以支持 CPU/单 GPU，添加数据转换、数值检查、最佳模型保存及重载检查、预测导出和命令行参数。依赖版本范围用于安装方便，不代表与论文环境完全一致。不能据此保证指标与论文逐位一致。
+```sh
+python run.py gaussian-noise --datasets PEMS08 --rates 0.1
+```
 
-## 输出
+其他入口：
 
-每个数据集输出到 `results/full/PEMSxx/`（小规模检查为 `results/smoke/PEMSxx/`）：
+```sh
+# 三种扰动全部运行，共108个组合
+python run.py robustness
 
-- `best_model.pt`：验证集最优模型权重。
-- `test_results.npz`：每个测试窗口的 `inputs`、`prediction`、`target` 和 `temporal_features`，流量值已还原至原始单位。
-- `metrics.json`：整体及未来 1～12 步的 MAE、RMSE、MAPE；MAPE 字段单位为百分数。
-- `runtime.conf`、`environment.json`：实际配置、依赖版本、设备和随机种子。
-- `console.log`、`status.json`：训练日志和运行状态；四数据集汇总为上一级的 `summary.json`。
+# 同一协议的干净对照，每模型/数据集各一次
+python run.py clean
 
-同一输出目录再次运行会覆盖该数据集的结果；需要保留多次实验时请指定不同的 `--output-root`。模型权重不包含优化器、随机状态等完整续训状态。
+# 之前的STDN原始复现入口，各数据集一次
+python run.py reproduce
 
-本地已在四个真实数据集上通过 CPU 小规模检查：训练、测试、预测有限值及权重重载一致性；这不是完整训练验证，也不承诺所有设备的默认 batch 都有足够显存。
+# 只汇总、绘图，不训练；默认扫描outputs/robustness下完整实验结果
+python run.py analyze
+```
 
-## 引用与授权
+`reproduce`保留之前STDN的数据与指标处理；`clean`是三模型在统一鲁棒性协议下的对照。两类指标应分别使用。STDN03/08仍采用此前确定的Torch-MTS参考配置，04/07保留作者参数，详见[原复现说明](docs/BASELINE.md)和[参数来源](docs/REFERENCE_TORCH_MTS.md)。
 
-使用时请引用原论文，并保留官方仓库来源。上游该提交未附带 LICENSE，本项目没有擅自为作者代码添加新的开源许可证；公开再分发和使用时请确认原作者授权。来源与修改范围详见 [UPSTREAM.md](UPSTREAM.md)。
+## 先检查再完整训练
+
+```sh
+# 只列出计划，不生成大数据文件、不训练
+python run.py gaussian-noise --plan
+
+# 协议与完整性单元检查
+python run.py check
+
+# 三个模型的小样本检查：一个数据集、一种比例、一轮，使用CPU
+python run.py gaussian-noise --datasets PEMS08 --rates 0.1 --smoke --device cpu
+```
+
+`--smoke`指标与图均标记为检查用途，不能作为论文结果。完整训练默认CUDA；可显式用`--device cpu`。本次发布仅完成代码和小样本验证，没有启动完整鲁棒性训练。
+
+## 常用选项与输出
+
+- `--models STDN STWave HyperD`：选择模型，默认三个。
+- `--datasets PEMS03 PEMS08`、`--rates 0.1 0.3`：限定数据集和比例。
+- `--corruption-seed 2024`：扰动种子。训练/验证/测试缺失节点一致，三个模型使用同一扰动包。
+- `--training-seed 1`：显式覆盖模型训练种子。默认STDN03/08为233，其余为1。
+- `--tag my_run`、`--output-root /path/to/outputs`：自定义结果分组和位置。
+- `--action prepare`：只准备数据；`--action summarize`：汇总已有结果并绘图。
+- `--include-clean`：给所选扰动额外加入干净对照。
+
+输出按实验类型分开：
+
+```text
+outputs/
+  baseline/stdn/                         之前STDN复现
+  robustness/node_missing/{full,smoke}/  节点缺失
+  robustness/temporal_gap/{full,smoke}/  连续缺失
+  robustness/gaussian_noise/{full,smoke}/ 高斯噪声
+  analysis/<实验名>/{full,smoke}/        overall.csv、horizons.csv、reports.json、PNG图
+```
+
+每个模型保存测试输入、干净输入、预测、真实值、掩码与时间下标，并输出整体及未来1～12步MAE/RMSE/MAPE。MAPE在统一报告中使用百分数。**只扰动输入流量，未来真实目标不扰动。**详细规则、共享标准化和训练历史初始化方式见[实验协议](docs/PROTOCOL.md)。
+
+重新分析某个分组：`python run.py analyze --tag gaussian_noise`；检查结果追加`--smoke`。完整结果已存在会跳过；部分训练结果不会自动覆盖，失败重跑请使用新tag。训练需要在自己的终端持续运行，暂未提供后台驻留或鲁棒性中断续训。
+
+## 来源
+
+源码版权、论文、改动边界与第三方许可见[来源说明](docs/SOURCES.md)。本仓库没有为原作者代码另行赋予MIT等许可证。[检查记录](docs/VALIDATION.md)只记录程序验证，不代表完整训练或论文指标已复现。

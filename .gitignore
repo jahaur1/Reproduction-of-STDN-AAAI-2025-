@@ -3,8 +3,9 @@ __pycache__/
 .venv/
 venv/
 .cache/
-data/
-datasets/
+/data/
+**/datasets/
+/models/STWave/data/
 raw_data/
 all_data/
 results/
@@ -25,3 +26,4 @@ experiments/
 *.zip
 *.tar.gz
 .DS_Store
+/settings.json

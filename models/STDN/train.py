@@ -107,6 +107,12 @@ valTE = torch.from_numpy(np.array(valTE, dtype='int32'))
 testTE = torch.from_numpy(np.array(testTE, dtype='int32'))
 mean_, std_ = torch.mean(trainX.reshape(-1, in_channels), axis=0), torch.std(trainX.reshape(-1, in_channels), axis=0)  # reshape axis 速度、占有率、流量
 print("mean and std in every feature",mean_.shape, mean_, std_)
+if 'scaler_mean' in training_config:
+    # Optional shared robustness scaler; default author path is unchanged.
+    mean_ = torch.tensor([float(training_config['scaler_mean'])], dtype=torch.float32)
+    std_ = torch.tensor([float(training_config['scaler_std'])], dtype=torch.float32)
+    if not torch.isfinite(std_).all() or not (std_ > 0).all():
+        raise ValueError('Invalid externally supplied training scaler')
 trainX = (trainX - mean_) / std_
 valX = (valX - mean_) / std_
 testX = (testX - mean_) / std_
