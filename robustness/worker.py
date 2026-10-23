@@ -57,64 +57,6 @@ def stdn(args, meta):
     return args.output / 'test_results.npz'
 
 
-def stwave(args, meta):
-    root = WORKSPACE / 'models/STWave'
-    os.chdir(root)
-    sys.path.insert(0, str(root))
-    from lib import utils
-    def loader(*unused, **kwargs):
-        result = []
-        for split in ('train', 'val', 'test'):
-            values = arrays(args.bundle, split)
-            result += [np.array(values['x']), np.array(values['y']), values['te'][:, :, None, :].copy()]
-        return (*result, meta['scaler']['mean'], meta['scaler']['std'],
-                np.load(args.bundle / 'train_observed.npy'))
-    utils.loadData = loader
-    cfg = configparser.ConfigParser()
-    cfg.read(root / 'config' / f'PeMSD{int(args.dataset[-2:])}.conf')
-    for key in ('traffic', 'adj'):
-        cfg['file'][key] = str((root / cfg['file'][key]).resolve())
-    if not Path(cfg['file']['adj']).exists():
-        import csv
-        n = arrays(args.bundle, 'train')['x'].shape[2]
-        adjacency = np.zeros((n, n), dtype='float32')
-        with args.graph.open(newline='') as stream:
-            reader = csv.reader(stream)
-            next(reader)
-            for i, j, distance in reader:
-                adjacency[int(i), int(j)] = adjacency[int(j), int(i)] = 1
-        adjacency_path = args.output / 'adj.npy'
-        np.save(adjacency_path, adjacency)
-        cfg['file']['adj'] = str(adjacency_path)
-    if args.smoke:
-        # Synthetic graph only for execution checks, never scientific runs.
-        temporal = args.output / 'smoke_temadj.npy'
-        identity = np.eye(arrays(args.bundle, 'train')['x'].shape[2])
-        np.save(temporal, identity + np.roll(identity, 1, axis=0) + np.roll(identity, -1, axis=0))
-    else:
-        temporal = args.output / 'temadj.npy'
-        if not temporal.exists():
-            from lib.graph_utils import construct_tem_adj
-            observed = np.load(args.bundle / 'train_observed.npy')
-            graph = construct_tem_adj(observed[..., None], observed.shape[1])
-            np.save(temporal, graph)
-    cfg['file']['temadj'] = str(temporal)
-    cfg['file']['model'] = str(args.output / 'best_model.pt')
-    cfg['file']['log'] = str(args.output / 'training.log')
-    cfg['train']['cuda'] = '0'
-    if args.training_seed is not None:
-        cfg['train']['seed'] = str(args.training_seed)
-    runtime = args.output / 'runtime.conf'
-    with runtime.open('w') as stream:
-        cfg.write(stream)
-    sys.argv = ['main.py', '--config', str(runtime), '--output_dir', str(args.output),
-                '--history_start_file', str(args.bundle / 'test_starts.npy')]
-    if args.smoke:
-        sys.argv += ['--batch_size', '2', '--smoke_batches', '2']
-    runpy.run_path(str(root / 'main.py'), run_name='__main__')
-    return args.output / 'test_results.npz'
-
-
 def hyperd(args, meta):
     root = WORKSPACE / 'models/HyperD'
     # Author configs read metadata relative to cwd when imported. Stage only
@@ -169,7 +111,7 @@ def hyperd(args, meta):
 
 
 def export_common(args, result, meta):
-    """Single metric policy across all models, alongside author native metrics."""
+    """Single metric policy across STDN and HyperD, alongside author native metrics."""
     test = arrays(args.bundle, 'test')
     with np.load(result) as native:
         pred = native['prediction'].copy()
@@ -200,7 +142,7 @@ def export_common(args, result, meta):
 
 def main():
     parser = argparse.ArgumentParser(__doc__)
-    parser.add_argument('--model', choices=['STDN', 'STWave', 'HyperD'], required=True)
+    parser.add_argument('--model', choices=['STDN', 'HyperD'], required=True)
     parser.add_argument('--dataset', required=True)
     parser.add_argument('--bundle', type=Path, required=True)
     parser.add_argument('--graph', type=Path)
@@ -232,7 +174,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     if list(args.output.rglob('*.pt')) or (args.output / 'robust_metrics.json').exists():
         raise FileExistsError('Output already contains model artifacts; choose a fresh output directory')
-    result = {'STDN': stdn, 'STWave': stwave, 'HyperD': hyperd}[args.model](args, meta)
+    result = {'STDN': stdn, 'HyperD': hyperd}[args.model](args, meta)
     export_common(args, result, meta)
 
 

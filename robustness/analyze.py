@@ -10,6 +10,8 @@ def analyze(search_root, destination, smoke=False):
     reports = []
     for path in sorted(search_root.rglob('robust_metrics.json')):
         data = json.loads(path.read_text())
+        if data['model'] not in ('STDN', 'HyperD'):
+            continue
         if bool(data['smoke']) != smoke:
             continue
         data['report_path'] = str(path.resolve())

@@ -30,11 +30,11 @@ def main(argv=None):
     # The original repository's --dataset/--data-root command remains usable.
     if argv and argv[0].startswith('-') and argv[0] not in ('-h', '--help'):
         argv.insert(0, 'reproduce')
-    parser = argparse.ArgumentParser(description='STDN baseline and three-model traffic robustness experiments')
+    parser = argparse.ArgumentParser(description='STDN baseline and STDN/HyperD robustness experiments; STWave uses plot_stwave_12steps.py')
     parser.add_argument('experiment', choices=['reproduce', *KINDS, 'analyze', 'check'])
     parser.add_argument('--datasets', '--dataset', nargs='+', default=DATASETS,
                         choices=DATASETS + ['all'])
-    parser.add_argument('--models', nargs='+', choices=['STDN', 'STWave', 'HyperD'], default=['STDN', 'STWave', 'HyperD'])
+    parser.add_argument('--models', nargs='+', choices=['STDN', 'HyperD'], default=['STDN', 'HyperD'])
     parser.add_argument('--rates', nargs='+', type=float, choices=[.1, .2, .3], default=[.1, .2, .3])
     parser.add_argument('--data-root', type=Path, default=ROOT / 'data/flow')
     parser.add_argument('--raw-root', type=Path, default=ROOT / 'data/graphs')

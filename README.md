@@ -1,20 +1,21 @@
-# STDN复现与三模型交通流鲁棒性分析
+# STDN复现、双模型鲁棒性与STWave逐步可视化
 
 论文：[STDN — Spatiotemporal-aware Trend-Seasonality Decomposition Network for Traffic Flow Forecasting](https://arxiv.org/abs/2502.12213)，AAAI2025。原作者代码：[roarer008/STDN](https://github.com/roarer008/STDN)。
 
-本仓库保留之前的STDN四数据集复现，并加入STWave、HyperD与STDN的统一鲁棒性比较。支持PEMS03/04/07/08。**这是复现工程，不是作者官方仓库。**
+本仓库保留之前的STDN四数据集复现；鲁棒性实验只比较STDN与HyperD，STWave只读取干净测试结果进行12步可视化。支持PEMS03/04/07/08。**这是复现工程，不是作者官方仓库。**
 
 ## 文件夹
 
 ```text
 run.py                     统一Python入口
 run_stdn.py                STDN独立一键入口，默认四数据集各一次
+plot_stwave_12steps.py      STWave干净测试的12步指标与预测可视化，不训练
 launcher.py                参数解析、依赖检查和任务分发
 models/
   STDN/                    原有STDN复现代码、四份配置
   STWave/                  STWave模型、训练器与四份配置
   HyperD/                  HyperD模型、四份配置及随附BasicTS框架
-robustness/                共享扰动、三模型适配、指标汇总与绘图
+robustness/                STDN/HyperD共享扰动、统一评价与绘图
 docs/                      原复现说明、扰动协议、参数与源码来源
 vendor/fastdtw/            原Python实现及其MIT许可
 data/                      自行准备的外部数据，不上传
@@ -73,9 +74,9 @@ python run_stdn.py gaussian-noise
 
 这些命令只运行STDN，默认四数据集×三个比例，共12个组合。可追加`--plan`只查看计划，或`--smoke --device cpu`检查小样本运行。
 
-### 三模型比较入口
+### STDN与HyperD鲁棒性比较
 
-在仓库根目录运行。下面每个命令都自动准备对应扰动、依次训练三个模型、保留测试样本和预测，再汇总CSV及分析图：
+在仓库根目录运行。下面每个命令都自动准备对应扰动、依次训练STDN和HyperD、保留测试样本和预测，再汇总CSV及分析图：
 
 ```sh
 # 固定节点缺失，10%/20%/30%
@@ -88,7 +89,7 @@ python run.py temporal-gap
 python run.py gaussian-noise
 ```
 
-每种命令默认覆盖四个数据集、三种比例、三个模型，共36个独立组合，每组合只训练一次。下面是只跑一个数据集和一个比例的例子：
+每种命令默认覆盖四个数据集、三种比例、两个模型，共24个独立组合，每组合只训练一次。下面是只跑一个数据集和一个比例的例子：
 
 ```sh
 python run.py gaussian-noise --datasets PEMS08 --rates 0.1
@@ -97,7 +98,7 @@ python run.py gaussian-noise --datasets PEMS08 --rates 0.1
 其他入口：
 
 ```sh
-# 三种扰动全部运行，共108个组合
+# 三种扰动全部运行，共72个组合
 python run.py robustness
 
 # 同一协议的干净对照，每模型/数据集各一次
@@ -110,7 +111,7 @@ python run.py reproduce
 python run.py analyze
 ```
 
-`reproduce`保留之前STDN的数据与指标处理；`clean`是三模型在统一鲁棒性协议下的对照。两类指标应分别使用。STDN03/08仍采用此前确定的Torch-MTS参考配置，04/07保留作者参数，详见[原复现说明](docs/BASELINE.md)和[参数来源](docs/REFERENCE_TORCH_MTS.md)。
+`reproduce`保留之前STDN的数据与指标处理；`clean`是STDN与HyperD在统一鲁棒性协议下的对照。两类指标应分别使用。STDN03/08仍采用此前确定的Torch-MTS参考配置，04/07保留作者参数，详见[原复现说明](docs/BASELINE.md)和[参数来源](docs/REFERENCE_TORCH_MTS.md)。
 
 ## 先检查再完整训练
 
@@ -121,17 +122,40 @@ python run.py gaussian-noise --plan
 # 协议与完整性单元检查
 python run.py check
 
-# 三个模型的小样本检查：一个数据集、一种比例、一轮，使用CPU
+# 两个模型的小样本检查：一个数据集、一种比例、一轮，使用CPU
 python run.py gaussian-noise --datasets PEMS08 --rates 0.1 --smoke --device cpu
 ```
 
 `--smoke`指标与图均标记为检查用途，不能作为论文结果。完整训练默认CUDA；可显式用`--device cpu`。本次发布仅完成代码和小样本验证，没有启动完整鲁棒性训练。
 
+
+## STWave：只做未来12步可视化
+
+将原STWave干净实验的输出放入`results/STWave/PEMSxx/`，每个已完成数据集包含`test_metrics.json`和`test_results.npz`，然后运行：
+
+```sh
+python plot_stwave_12steps.py
+```
+
+也可直接指定现有实验目录：
+
+```sh
+python plot_stwave_12steps.py --results-root /path/to/STWave/reproduction/official_seed1
+```
+
+脚本只读取结果，不训练、不添加扰动。每个已完成数据集输出：
+
+- 未来1～12步的MAE、RMSE、MAPE曲线与CSV（MAPE为百分数）。
+- 每一步单独的预测/真实值对照PNG、PDF，共12步；另有12子图总览。
+- 默认展示节点0、前288个测试窗口，可用`--node`、`--start`、`--count`更改。示例节点曲线不代表全体节点的整体误差。
+
+输出位于`outputs/stwave_12steps/`。未完成完整测试的数据集标记为pending，不读取smoke结果或填造数值；其干净实验完成后再次运行即可补图。
+
 ## 常用选项与输出
 
-- `--models STDN STWave HyperD`：选择模型，默认三个。
+- `--models STDN HyperD`：选择鲁棒性模型，默认两者；STWave不参与。
 - `--datasets PEMS03 PEMS08`、`--rates 0.1 0.3`：限定数据集和比例。
-- `--corruption-seed 2024`：扰动种子。训练/验证/测试缺失节点一致，三个模型使用同一扰动包。
+- `--corruption-seed 2024`：扰动种子。训练/验证/测试缺失节点一致，STDN与HyperD使用同一扰动包。
 - `--training-seed 1`：显式覆盖模型训练种子。默认STDN03/08为233，其余为1。
 - `--tag my_run`、`--output-root /path/to/outputs`：自定义结果分组和位置。
 - `--action prepare`：只准备数据；`--action summarize`：汇总已有结果并绘图。

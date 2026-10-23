@@ -1,4 +1,4 @@
-"""Plan, prepare, or run the shared STDN/STWave/HyperD robustness suite."""
+"""Plan, prepare, or run the shared STDN/HyperD robustness suite."""
 import argparse
 import csv
 import json
@@ -44,7 +44,7 @@ def graph_csv(dataset, raw_root, output):
 def main():
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument('command', choices=['plan', 'prepare', 'run', 'summarize'])
-    parser.add_argument('--models', nargs='+', choices=['STDN', 'STWave', 'HyperD'], default=['STDN', 'STWave', 'HyperD'])
+    parser.add_argument('--models', nargs='+', choices=['STDN', 'HyperD'], default=['STDN', 'HyperD'])
     parser.add_argument('--datasets', nargs='+', choices=['PEMS03', 'PEMS04', 'PEMS07', 'PEMS08'], default=['PEMS03', 'PEMS04', 'PEMS07', 'PEMS08'])
     parser.add_argument('--kinds', nargs='+', choices=['clean', 'node', 'node_gap', 'noise'], default=['node', 'node_gap', 'noise'])
     parser.add_argument('--rates', nargs='+', type=float, choices=[.1, .2, .3], default=[.1, .2, .3])
@@ -65,6 +65,7 @@ def main():
     root.mkdir(parents=True, exist_ok=True)
     if args.command == 'summarize':
         reports = [json.loads(path.read_text()) for path in root.glob('runs/*/*/*/robust_metrics.json')]
+        reports = [report for report in reports if report['model'] in args.models]
         (root / 'summary.json').write_text(json.dumps(reports, indent=2), encoding='utf-8')
         columns = ['dataset', 'model', 'kind', 'rate', 'corruption_seed', 'training_seed', 'MAE', 'RMSE', 'MAPE_percent', 'smoke']
         with (root / 'summary.csv').open('w', newline='', encoding='utf-8-sig') as stream:

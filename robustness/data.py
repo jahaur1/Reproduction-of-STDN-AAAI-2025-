@@ -57,7 +57,7 @@ def corrupt(x, kind, rate, seed=2024):
 
 
 def prepare(data_root, dataset, destination, kind, rate, seed=2024, smoke=False):
-    """Build once, share between all three models; no changes to source files."""
+    """Build once, share between STDN and HyperD; no changes to source files."""
     if dataset not in NODES:
         raise ValueError(dataset)
     source = Path(data_root).resolve() / dataset
