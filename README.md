@@ -8,6 +8,7 @@
 
 ```text
 run.py                     统一Python入口
+run_stdn.py                STDN独立一键入口，默认四数据集各一次
 launcher.py                参数解析、依赖检查和任务分发
 models/
   STDN/                    原有STDN复现代码、四份配置
@@ -51,6 +52,28 @@ data/
 ```
 
 ## 分别一键运行
+
+### STDN独立入口
+
+准备好上述数据后，在仓库根目录执行：
+
+```sh
+python run_stdn.py
+```
+
+默认仅运行STDN，依次复现PEMS03、04、07、08，每个数据集一次。可用`--datasets PEMS08`只跑单个数据集；外部数据路径通过`--data-root`、`--raw-root`指定，缺少依赖时可加`--install-deps`。
+
+STDN单模型鲁棒性也可以分别一键运行：
+
+```sh
+python run_stdn.py node-missing
+python run_stdn.py temporal-gap
+python run_stdn.py gaussian-noise
+```
+
+这些命令只运行STDN，默认四数据集×三个比例，共12个组合。可追加`--plan`只查看计划，或`--smoke --device cpu`检查小样本运行。
+
+### 三模型比较入口
 
 在仓库根目录运行。下面每个命令都自动准备对应扰动、依次训练三个模型、保留测试样本和预测，再汇总CSV及分析图：
 

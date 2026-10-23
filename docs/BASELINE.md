@@ -1,5 +1,7 @@
 # STDN 四数据集复现入口
 
+独立一键入口为仓库根目录的`python run_stdn.py`：默认PEMS03/04/07/08各一次。单数据集示例：`python run_stdn.py --datasets PEMS08`。
+
 目录整理后，模型源码和四份配置位于`models/STDN/`。仓库根目录的`python run.py reproduce`调用这一套原有复现入口；旧的`python run.py --dataset ... --data-root ...`写法也保留兼容。本文下方旧命令仍可从仓库根目录运行。
 
 论文：[Spatiotemporal-aware Trend-Seasonality Decomposition Network for Traffic Flow Forecasting](https://arxiv.org/abs/2502.12213)（AAAI 2025）。
